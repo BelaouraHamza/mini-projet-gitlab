@@ -27,4 +27,5 @@ Vagrant.configure("2") do |config|
     echo "→ Puis fais : docker pull hamzablr/mini-projet-gitlab:v1"
     echo "→ Et lance : docker run -d -p 80:80 --name mini-projet hamzablr/mini-projet-gitlab:v1"
   SHELL
+  config.vm.synced_folder ".", "/home/vagrant/app"
 end
