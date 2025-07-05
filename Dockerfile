@@ -15,9 +15,9 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # 5️⃣ Déploiement du contenu HTML via git clone
-RUN rm -rf /usr/share/nginx/html/* && \
-    git clone --depth=1 https://github.com/BelaouraHamza/mini-projet-gitlab.git /usr/share/nginx/html && \
-    rm -rf /usr/share/nginx/html/.git
+RUN git clone --depth=1 https://github.com/BelaouraHamza/mini-projet-gitlab.git /tmp/site && \
+    cp -r /tmp/site/app/app/* /usr/share/nginx/html/ && \
+    rm -rf /tmp/site
 
 # 6️⃣ Exposition du port HTTP standard
 EXPOSE 80

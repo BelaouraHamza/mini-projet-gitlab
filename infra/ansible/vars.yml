@@ -1,0 +1,5 @@
+image_name: hamzablr/mini-projet-gitlab
+image_tag: v1
+container_name: mini-projet
+host_port: 80
+container_port: 80

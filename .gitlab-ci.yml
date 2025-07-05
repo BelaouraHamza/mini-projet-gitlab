@@ -1,106 +1,47 @@
 stages:
-  - build 
-  - test
+  - build
   - release
   - deploy
 
 variables:
-  IMAGE_NAME: 'mini-projet-gitlab'
-  IMAGE_TAG: 'V1'
-  DOCKER_USRNAME: 'HamzaBLR'
-  ##DOCKER_PASSWORD:
+  IMAGE_NAME: "hamzablr/mini-projet-gitlab"
+  IMAGE_TAG: "v1"
   HOST_PORT: 80
   CONTAINER_PORT: 80
-  SERVER_USERNAME: 'ubuntu'
-
-#Build de l'image
+  SERVER_IP: "192.168.56.10"
+  SERVER_USERNAME: "ubuntu"
 
 Build:
   stage: build
   image: docker:latest
   services:
-    - name: docker:dind
-      alais: docker
+    - docker:dind
   script:
-    - docker build --no-cache -t $IMAGE_NAME:$IMAGE_TAG .
-    - docker save -o mini-projet-gilab.tar $IMAGE_NAME:$IMAGE_TAG
+    - docker build -t $IMAGE_NAME:$IMAGE_TAG .
+    - docker save -o mini-projet-gitlab.tar $IMAGE_NAME:$IMAGE_TAG
   artifacts:
     paths:
       - mini-projet-gitlab.tar
 
-.test_templates: &test_templates
-  stage: test
-  before_script:
-    - apk add --no-cache curl
+Release:
+  stage: release
+  image: docker:latest
+  services:
+    - docker:dind
   script:
+    - echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
     - docker load -i mini-projet-gitlab.tar
-    - docker run --rm -dp $HOST_PORT:$CONTAINER_PORT --name $IMAGE_NAME $IMAGE_NAME:$IMAGE_TAG
-    - sleep 5
-    - curl -I "http://docker" | grep -i 200
+    - docker push $IMAGE_NAME:$IMAGE_TAG
 
-Test: 
-  stage: test
-  image: docker:latest
-  services:
-    - name: docker:dind
-      alais: docker
-  <<: *test_templates
-
-.release_image: &release_image
-  stage: release
+Deploy:
+  stage: deploy
+  image: alpine:latest
+  before_script:
+    - apk add --no-cache openssh ansible bash
+    - mkdir -p ~/.ssh
+    - echo "$SSH_PRIVATE_KEY" | base64 -d > ~/.ssh/id_rsa
+    - chmod 600 ~/.ssh/id_rsa
+    - ssh-keyscan -H $SERVER_IP >> ~/.ssh/known_hosts
   script:
-  - echo $DOCKER_PASSWORD | docker login -u $DOCKER_USRNAME --password-stdin
-  - docker login -u $DOCKER_USRNAME -p $DOCKER_PASSWORD 
-  - docker load -i mini-projet-gitlab.tar
-  - docker tag $IMAGE_NAME:$IMAGE_TAG $DOCKER_USRNAME/$IMAGE_NAME:$IMAGE_TAG
-  - docker push $DOCKER_USRNAME/$IMAGE_NAME:$IMAGE_TAG
-
-Release_Image:
-  stage: release
-  image: docker:latest
-  services:
-    - name: docker:dind
-      alais: docker
-  <<: *release_image
-
-  .deploy_app: &deploy_app
-    stage: deploy
-    before_script:
-      - apk add --no-cache openssh
-      - eval $(ssh-agent -s)
-      - echo "SSH_PRIVATE_KEY" | base64 -d > /tmp/id_rsa
-      - chmod 600 /tmp/id_rsa
-      - ssh-add /tmp/id_rsa
-      - mkdir -p ~/.ssh
-      - chmod 700 ~/.ssh
-      - echo -e "Host *\n\tStricHostKeyChecking no\n\n" > ~/.ssh/config
-    script:
-      - ssh -o StricHostKeyChecking=no -i /tmp/id_rsa $SERVER_USERNAME@$SERVER_IP "docker pull $DOCKER_USRNAME/$IMAGE_NAME:$IMAGE_TAG"
-      - ssh -o StricHostKeyChecking=no -i /tmp/id_rsa $SERVER_USERNAME@$SERVER_IP "docker
-
-Deploy review:
-  stage: deploy
-  variables:
-    SERVER_IP: ''
-  image: alpine
-  <<: *deploy_app
-  environment:
-    name: Review
-
-Deploy stagin:
-  stage: deploy
-  variables:
-    SERVER_IP: ''
-  image: alpine
-  <<: *deploy_app
-  environment:
-    name: Stagin
-
-Deploy production:
-  stage: deploy
-  variables:
-    SERVER_IP: ''
-  image: alpine
-  <<: *deploy_app
-  environment:
-    name: Production
+    - cd infra/ansible
+    - ansible-playbook -i inventory.ini deploy.yml

@@ -1,0 +1,27 @@
+---
+- name: 🚀 Déployer le conteneur Docker
+  hosts: web
+  become: true
+  vars_files:
+    - vars.yml
+
+  tasks:
+    - name: Stopper ancien conteneur (s'il existe)
+      docker_container:
+        name: "{{ container_name }}"
+        state: absent
+
+    - name: Pull image depuis Docker Hub
+      docker_image:
+        name: "{{ image_name }}"
+        tag: "{{ image_tag }}"
+        source: pull
+
+    - name: Démarrer le conteneur
+      docker_container:
+        name: "{{ container_name }}"
+        image: "{{ image_name }}:{{ image_tag }}"
+        state: started
+        restart_policy: always
+        ports:
+          - "{{ host_port }}:{{ container_port }}"
