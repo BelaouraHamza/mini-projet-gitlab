@@ -1,47 +1,61 @@
 stages:
   - build
-  - release
+  - push
   - deploy
 
 variables:
-  IMAGE_NAME: "hamzablr/mini-projet-gitlab"
-  IMAGE_TAG: "v1"
+  IMAGE_NAME: mini-projet-gitlab
+  IMAGE_TAG: v1
+  DOCKER_USERNAME: hamzablr
+  CONTAINER_NAME: mini-projet
+  SERVER_IP: 192.168.56.10
+  SSH_USER: vagrant
   HOST_PORT: 80
   CONTAINER_PORT: 80
-  SERVER_IP: "192.168.56.10"
-  SERVER_USERNAME: "ubuntu"
 
-Build:
+build:
   stage: build
   image: docker:latest
   services:
     - docker:dind
   script:
-    - docker build -t $IMAGE_NAME:$IMAGE_TAG .
-    - docker save -o mini-projet-gitlab.tar $IMAGE_NAME:$IMAGE_TAG
-  artifacts:
-    paths:
-      - mini-projet-gitlab.tar
+    - docker build -t $DOCKER_USERNAME/$IMAGE_NAME:$IMAGE_TAG .
 
-Release:
-  stage: release
+push:
+  stage: push
   image: docker:latest
   services:
     - docker:dind
   script:
     - echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
-    - docker load -i mini-projet-gitlab.tar
-    - docker push $IMAGE_NAME:$IMAGE_TAG
+    - docker push $DOCKER_USERNAME/$IMAGE_NAME:$IMAGE_TAG
 
-Deploy:
+deploy:
   stage: deploy
   image: alpine:latest
   before_script:
-    - apk add --no-cache openssh ansible bash
+    - apk add --no-cache openssh-client bash curl
     - mkdir -p ~/.ssh
-    - echo "$SSH_PRIVATE_KEY" | base64 -d > ~/.ssh/id_rsa
+    - echo "$SSH_PRIVATE_KEY" | tr -d '\r' > ~/.ssh/id_rsa
     - chmod 600 ~/.ssh/id_rsa
     - ssh-keyscan -H $SERVER_IP >> ~/.ssh/known_hosts
   script:
-    - cd infra/ansible
-    - ansible-playbook -i inventory.ini deploy.yml
+    - ssh $SSH_USER@$SERVER_IP "\
+        docker pull $DOCKER_USERNAME/$IMAGE_NAME:$IMAGE_TAG && \
+        docker stop $CONTAINER_NAME || true && \
+        docker rm $CONTAINER_NAME || true && \
+        docker run -d -p $HOST_PORT:$CONTAINER_PORT --name $CONTAINER_NAME $DOCKER_USERNAME/$IMAGE_NAME:$IMAGE_TAG && \
+        docker system prune -f"  # nettoyage léger après déploiement
+    - |
+      for i in $(seq 1 5); do
+        status=$(ssh $SSH_USER@$SERVER_IP "curl -s -o /dev/null -w '%{http_code}' http://localhost:$HOST_PORT")
+        if [ "$status" = "200" ]; then
+          echo "✅ Application accessible"
+          exit 0
+        else
+          echo "⏳ Tentative $i - Application non accessible, nouvelle tentative dans 3 secondes"
+          sleep 3
+        fi
+      done
+      echo "❌ Application non accessible après plusieurs tentatives"
+      exit 1

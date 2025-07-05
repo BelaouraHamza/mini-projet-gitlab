@@ -16,8 +16,16 @@ RUN apt-get update && \
 
 # 5️⃣ Déploiement du contenu HTML via git clone
 RUN git clone --depth=1 https://github.com/BelaouraHamza/mini-projet-gitlab.git /tmp/site && \
-    cp -r /tmp/site/app/app/* /usr/share/nginx/html/ && \
+    if [ -d /tmp/site/app/app ]; then \
+        echo "📁 Copie depuis /tmp/site/app/app/"; \
+        cp -r /tmp/site/app/app/* /usr/share/nginx/html/; \
+    else \
+        echo "❌ Le dossier /tmp/site/app/app/ n'existe pas."; \
+        ls -l /tmp/site/app || true; \
+    fi && \
     rm -rf /tmp/site
+
+
 
 # 6️⃣ Exposition du port HTTP standard
 EXPOSE 80

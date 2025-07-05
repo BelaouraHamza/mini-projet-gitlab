@@ -5,6 +5,8 @@ DOCKER_USERNAME = hamzablr
 CONTAINER_NAME = mini-projet
 SERVER_IP = 192.168.56.10
 SSH_USER = vagrant
+HOST_PORT = 80
+CONTAINER_PORT = 80
 
 # -------------------
 # 🚧 BUILD
@@ -22,27 +24,30 @@ push:
 # 🚀 DEPLOY (via SSH)
 # -------------------
 deploy:
-	vagrant ssh -c "\
-		docker pull hamzablr/mini-projet-gitlab:v1 && \
-		docker stop mini-projet || true && \
-		docker rm mini-projet || true && \
-		docker run -d -p 80:80 --name mini-projet hamzablr/mini-projet-gitlab:v1 \
+	ssh $(SSH_USER)@$(SERVER_IP) "\
+		docker pull $(DOCKER_USERNAME)/$(IMAGE_NAME):$(IMAGE_TAG) && \
+		docker stop $(CONTAINER_NAME) || true && \
+		docker rm $(CONTAINER_NAME) || true && \
+		docker run -d -p $(HOST_PORT):$(CONTAINER_PORT) --name $(CONTAINER_NAME) $(DOCKER_USERNAME)/$(IMAGE_NAME):$(IMAGE_TAG) \
 	"
 	@$(MAKE) healthcheck
 
+# -------------------
+# 🔎 HEALTHCHECK avec retry
+# -------------------
 healthcheck:
 	@echo "🔎 Vérification de la disponibilité de l'application..."
-	vagrant ssh -c "\
-		sleep 2 && \
-		curl -s -o /dev/null -w '%{http_code}' http://localhost | grep 200 && \
-		echo '✅ Application OK sur http://localhost' || \
-		(echo '❌ Application non disponible'; exit 1) \
-	"
-# -------------------
-# ✅ TEST (curl sur IP VM)
-# -------------------
-#test:
-#curl -I http://$(SERVER_IP) | grep HTTP
+	@for i in {1..5}; do \
+		status=$$(ssh $(SSH_USER)@$(SERVER_IP) "curl -s -o /dev/null -w '%{http_code}' http://localhost:$(HOST_PORT)"); \
+		if [ "$$status" = "200" ]; then \
+			echo "✅ Application OK sur http://$(SERVER_IP):$(HOST_PORT)"; \
+			exit 0; \
+		else \
+			echo "⏳ Tentative $$i : Application non disponible, retry..."; \
+			sleep 3; \
+		fi; \
+	done; \
+	echo "❌ Application non disponible après plusieurs essais"; exit 1
 
 # -------------------
 # 📜 LOGS
@@ -57,6 +62,14 @@ setup-ssh:
 	ssh-copy-id -i ~/.ssh/id_rsa.pub $(SSH_USER)@$(SERVER_IP)
 
 # -------------------
-# 🔁 BUILD + PUSH + DEPLOY + TEST
+# 🧹 CLEAN local images/containers
+# -------------------
+clean:
+	docker stop $(CONTAINER_NAME) || true
+	docker rm $(CONTAINER_NAME) || true
+	docker rmi $(DOCKER_USERNAME)/$(IMAGE_NAME):$(IMAGE_TAG) || true
+
+# -------------------
+# 🔁 BUILD + PUSH + DEPLOY + HEALTHCHECK
 # -------------------
 all: build push deploy
